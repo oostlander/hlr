@@ -209,7 +209,8 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	while (options->term_iteration > 0)
 	{
 		maxresiduum = 0;
-
+		/* Pointer auf Threads */
+		pthread_t threads[NUM_THREADS]; 
 		/* over all rows */
 		for (i = 1; i < N; i++)
 		{
