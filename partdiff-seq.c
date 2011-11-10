@@ -118,12 +118,12 @@ allocateMatrices (struct calculation_arguments* arguments)
 
 	int N = arguments->N;
 
-	arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double));
+	arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double)); 
 	arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
 
 	for (i = 0; i < arguments->num_matrices; i++)
 	{
-		arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*));
+		arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
 
 		for (j = 0; j <= N; j++)
 		{
@@ -224,7 +224,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 				}
 
 				residuum = Matrix[m2][i][j] - star;
-				residuum = (residuum < 0) ? -residuum : residuum;
+				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
 				maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
 
 				Matrix[m1][i][j] = star;
@@ -235,7 +235,13 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		results->stat_precision = maxresiduum;
 
 		/* exchange m1 and m2 */
-		i=m1; m1=m2; m2=i;
+		//i=m1; m1=m2; m2=i; /* normal swap */
+		m1 ^= m2 ^= m2 ^= m1; /* XOR swap */
+		/* *********************************************************************** */
+		/* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
+		/* Es kann also nur jeweils eine Iteration überhaupt parallelisiert werden */
+		/* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
+		/* *********************************************************************** */
 
 		/* check for stopping calculation, depending on termination method */
 		if (options->termination == TERM_PREC)
