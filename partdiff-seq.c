@@ -18,12 +18,15 @@
 /* ************************************************************************ */
 /* Include standard header file.                                            */
 /* ************************************************************************ */
+#include <pthreads.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <malloc.h>
 #include <sys/time.h>
 #include "partdiff-seq.h"
+
+#define NUM_THREADS 24
 
 struct calculation_arguments
 {
@@ -333,7 +336,7 @@ main (int argc, char** argv)
 {
 	struct options options;
 	struct calculation_arguments arguments;
-	struct calculation_results results;
+	struct calculation_results results; 
 
 	/* get parameters */
 	AskParams(&options, argc, argv);              /* ************************* */
