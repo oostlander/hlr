@@ -211,7 +211,9 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		maxresiduum = 0;
 		/* Pointer auf Threads */
 		pthread_t threads[NUM_THREADS]; 
+		/* pthread create */
 		/* over all rows */
+		/* TODO ab hier muss es eine funktion werden die "in place" auf die Variablen zugreift */
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
@@ -224,14 +226,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 					star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
 				}
 
-				residuum = Matrix[m2][i][j] - star;
+				residuum = Matrix[m2][i][j] - star; /* TODO residuum muss pro Thread gemacht werden */
 				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
-				maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
+				maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
 
 				Matrix[m1][i][j] = star;
 			}
 		}
-
+                /* maxresiduum muss gesetzt werden */
+		/* pthreadjoin */
 		results->stat_iteration++;
 		results->stat_precision = maxresiduum;
 
@@ -247,7 +250,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		/* check for stopping calculation, depending on termination method */
 		if (options->termination == TERM_PREC)
 		{
-			if (maxresiduum < options->term_precision)
+			if (maxresiduum < options->term_precision) 
 			{
 				options->term_iteration = 0;
 			}
