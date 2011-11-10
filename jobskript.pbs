@@ -1,0 +1,15 @@
+##### ANFANG DATEI # 'jobskript.pbs' ####
+#####!/bin/bash
+#PBS -N cjob
+#PBS -l nodes=1:ppn=12,walltime=00:01:00
+#PBS -m n
+#PBS -o job_script.out
+PROG="/home/oostlander/hr/task04/04-PDE/partdiff-seq"
+
+PROGARGS="1 1 500 1 2 15" #### für später
+source /opt/modules/current/Modules/init/bash
+module load mpich2
+cd $PBS_O_WORKDIR
+#####cat $PBS_NODEFILE
+mpiexec $PROG $PROGARGS >> timescript.out
+echo "fertig"
