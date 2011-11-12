@@ -26,7 +26,6 @@
 #include <sys/time.h>
 #include "partdiff-seq.h"
 
-#define NUM_THREADS 24
 
 struct calculation_arguments
 {
@@ -210,7 +209,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	{
 		maxresiduum = 0;
 		/* Pointer auf Threads */
-		pthread_t threads[NUM_THREADS]; 
+		pthread_t threads[options->number]; /* Anzahl der Threads wird festgelegt durch User */
 		/* pthread create */
 		/* over all rows */
 		/* TODO ab hier muss es eine funktion werden die "in place" auf die Variablen zugreift */
