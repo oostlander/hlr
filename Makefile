@@ -1,8 +1,8 @@
 # Common definitions
-CC = icc
+CC = gcc
 
 # Compiler flags, paths and libraries
-CFLAGS = -std=c99 -g -pedantic -Wall -Wextra -O1
+CFLAGS = -std=c99 -g -pthread -pedantic -Wall -Wextra -O1
 LFLAGS = $(CFLAGS)
 LIBS   = -lm
 

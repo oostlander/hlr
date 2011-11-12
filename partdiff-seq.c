@@ -18,7 +18,7 @@
 /* ************************************************************************ */
 /* Include standard header file.                                            */
 /* ************************************************************************ */
-#include <pthreads.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -213,6 +213,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		/* pthread create */
 		/* over all rows */
 		/* TODO ab hier muss es eine funktion werden die "in place" auf die Variablen zugreift */
+		threadCalculate(1,1,N,N,&maxresiduum, );
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
@@ -262,7 +263,38 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 
 	results->m = m2;
 }
+/* **************************************************************************************************** */
+/* Does the parralel part of the work calculate does. Needs to get the parameters as Call by Reference. */
+/* **************************************************************************************************** */
+static
+void
+threadCalculate (int i, int j, int max_i, int max_j, double* maxresiduum, int* m1, int* m2, struct options* options, struct calculation_arguments* arguments)
+{
+  double star;
+  double residuum;
+  double t_maxresiduum;
+  double*** Matrix = arguments->Matrix;
+  for (i = 1; i < max_i; i++)
+    {
+      /* over all columns */
+      for (j = 1; j < max_j; j++)
+	{
+	  star = (Matrix[m2][i-1][j] + Matrix[m2][i][j-1] + Matrix[m2][i][j+1] + Matrix[m2][i+1][j]) * 0.25;
 
+	  if (options->inf_func == FUNC_FPISIN)
+	    {
+	      star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
+	    }
+
+	  residuum = Matrix[m2][i][j] - star; /* TODO residuum muss pro Thread gemacht werden */
+	  residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
+	  t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum; 
+	  Matrix[m1][i][j] = star;
+	}
+    }
+  /* TODO maxresiduum muss zu mutex werden */
+  *maxresiduum = (t_maxresiduum < *maxresiduum) ? *maxresiduum : t_maxresiduum; /* kann man so machen weil max gesucht wird nicht min */
+}
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
 /* ************************************************************************ */
