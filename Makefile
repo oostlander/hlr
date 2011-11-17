@@ -5,6 +5,7 @@ CC = gcc
 CFLAGS = -std=c99 -g -pthread -pedantic -Wall -Wextra -O1
 LFLAGS = $(CFLAGS)
 LIBS   = -lm
+OpenMP = ./omp	
 
 OBJS = partdiff-seq.o askparams.o displaymatrix.o
 
@@ -14,6 +15,9 @@ OBJS = partdiff-seq.o askparams.o displaymatrix.o
 
 # Targets ...
 all: partdiff-seq
+
+partdiff-openmp: $(OBJS) Makefile
+	$(CC) $(LFLAGS) -o $q $(OBJS) $(LIBS)
 
 partdiff-seq: $(OBJS) Makefile
 	$(CC) $(LFLAGS) -o $@ $(OBJS) $(LIBS)
