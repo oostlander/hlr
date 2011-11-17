@@ -18,7 +18,6 @@
 /* ************************************************************************ */
 /* Include standard header file.                                            */
 /* ************************************************************************ */
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -242,11 +241,16 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	{
 		maxresiduum = 0;
 		/* over all rows */
+		double t_maxresiduum = 0;
+		
+		#pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) shared(maxresiduum)
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
+			//#pragma omp parallel for private(residuum, star)
 			for (j = 1; j < N; j++)
 			{
+				
 				star = (Matrix[m2][i-1][j] + Matrix[m2][i][j-1] + Matrix[m2][i][j+1] + Matrix[m2][i+1][j]) * 0.25;
 		
 				if (options->inf_func == FUNC_FPISIN)
@@ -256,12 +260,13 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		
 				residuum = Matrix[m2][i][j] - star;
 				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
-				maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
+				t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
 		
 				Matrix[m1][i][j] = star;
 			}
+			maxresiduum = (t_maxresiduum < maxresiduum) ? maxresiduum : t_maxresiduum;
+			
 		}
-		/* pthreadjoin */
 		results->stat_iteration++;
 		results->stat_precision = maxresiduum;
 
