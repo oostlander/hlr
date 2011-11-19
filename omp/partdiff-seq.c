@@ -242,12 +242,13 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		maxresiduum = 0;
 		/* over all rows */
 		double t_maxresiduum = 0;
-		
-		#pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) shared(maxresiduum)
+	        
+                #pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) default(shared)
+		//shared(maxresiduum, N, m2, m1, options, Matrix)
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
-			//#pragma omp parallel for private(residuum, star)
+                        //#pragma omp parallel for private(residuum, star) firstprivate(t_maxresiduum) default(shared)
 			for (j = 1; j < N; j++)
 			{
 				
@@ -255,17 +256,21 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		
 				if (options->inf_func == FUNC_FPISIN)
 				{
-					star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
+				  star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
 				}
 		
 				residuum = Matrix[m2][i][j] - star;
 				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
+				//#pragma omp critical
+				//{
 				t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
-		
+				//}
 				Matrix[m1][i][j] = star;
 			}
+			#pragma omp critical
+			{
 			maxresiduum = (t_maxresiduum < maxresiduum) ? maxresiduum : t_maxresiduum;
-			
+			}
 		}
 		results->stat_iteration++;
 		results->stat_precision = maxresiduum;
