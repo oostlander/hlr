@@ -177,38 +177,6 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 		}
 	}
 }
-/* **************************************************************************************************** */
-/* Does the parralel part of the work calculate does. Needs to get the parameters as Call by Reference. */
-/* **************************************************************************************************** */
-//static
-//void
-//threadCalculate (int i, int j, int max_i, int max_j, double* maxresiduum, int* m1, int* m2, struct options* options, struct calculation_arguments* arguments)
-//{
-  //double star;
-  //double residuum;
-  //double t_maxresiduum;
-  //double*** Matrix = arguments->Matrix;
-  //double h = arguments->h;
-  //for (i = 1; i < max_i; i++)
-    //{
-      ///* over all columns */
-      //for (j = 1; j < max_j; j++)
-        //{
-          //star = (Matrix[*m2][i-1][j] + Matrix[*m2][i][j-1] + Matrix[*m2][i][j+1] + Matrix[*m2][i+1][j]) * 0.25;
-          //if (options->inf_func == FUNC_FPISIN)
-            //{
-              //star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
-            //}
-
-          //residuum = Matrix[*m2][i][j] - star; /* TODO residuum muss pro Thread gemacht werden */
-          //residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
-          //t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum;
-          //Matrix[*m1][i][j] = star;
-        //}
-    //}
-  ///* TODO maxresiduum muss zu mutex werden */
-  //*maxresiduum = (t_maxresiduum < *maxresiduum) ? *maxresiduum : t_maxresiduum; /* kann man so machen weil max gesucht wird nicht min */
-//}
 
 
 /* ************************************************************************ */
@@ -223,12 +191,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	double star;                                /* four times center value minus 4 neigh.b values */
 	double residuum;                            /* residuum of current iteration                  */
 	double maxresiduum;                         /* maximum residuum value of a slave in iteration */
-
+	double t_maxresiduum = 0;					/* temporal value of maxresiduum on OpenMp Thread */
 	int N = arguments->N;
 	double h = arguments->h;
 	double*** Matrix = arguments->Matrix;
 	
-	omp_set_num_threads(options->number);
+	omp_set_num_threads(options->number); /* setting number of openMP Threads */
+	
+	/* Print the number of available processors on the system and the
+	 * maximum number of threads useable */
 	printf("Anzahl Threads: %d\n", omp_get_max_threads());
 	printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
 
@@ -245,12 +216,12 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	while (options->term_iteration > 0)
 	{
 		maxresiduum = 0;
-		/* over all rows */
-		double t_maxresiduum = 0;
-		//double t1_maxresiduum = 0;
-	        
+	    /* start parallel part of the program */
+	    /* variables are declared either private, firstprivate, lastprivate or shared */
+	    /* default clause sets this for all variables not mentioned !!!!!*/    
         #pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) default(shared)
 		//shared(maxresiduum, N, m2, m1, options, Matrix)
+		/* over all rows */
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
@@ -265,11 +236,12 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		
 				residuum = Matrix[m2][i][j] - star;
 				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */	
-				
-				t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
+				/* temporal calculation of maxresiduum per thread */
+				t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum;
 				
 				Matrix[m1][i][j] = star;
 			}
+			/* collect all temporal values of maxresiduum (critical needed to prevent race condition) */
 			#pragma omp critical
 			{
 			  maxresiduum = (t_maxresiduum < maxresiduum) ? maxresiduum : t_maxresiduum;
