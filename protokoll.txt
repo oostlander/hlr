@@ -1,0 +1,6 @@
+Benötigte Zeit zum Optimieren des Codes insgesamt:
+18 Std
+Davon Fehlersuche:
+6 Std
+Davon Nachlesen in OpenMP Dokumentation:
+10 Std
