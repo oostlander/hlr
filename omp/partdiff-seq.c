@@ -24,6 +24,7 @@
 #include <malloc.h>
 #include <sys/time.h>
 #include "partdiff-seq.h"
+#include <omp.h>
 
 
 struct calculation_arguments
@@ -226,6 +227,10 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	int N = arguments->N;
 	double h = arguments->h;
 	double*** Matrix = arguments->Matrix;
+	
+	omp_set_num_threads(options->number);
+	printf("Anzahl Threads: %d\n", omp_get_max_threads());
+	printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
 
 	/* initialize m1 and m2 depending on algorithm */
 	if (options->method == METH_GAUSS_SEIDEL)
@@ -242,16 +247,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		maxresiduum = 0;
 		/* over all rows */
 		double t_maxresiduum = 0;
+		//double t1_maxresiduum = 0;
 	        
-                #pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) default(shared)
+        #pragma omp parallel for private(residuum, star) firstprivate(j, t_maxresiduum) default(shared)
 		//shared(maxresiduum, N, m2, m1, options, Matrix)
 		for (i = 1; i < N; i++)
 		{
 			/* over all columns */
-                        //#pragma omp parallel for private(residuum, star) firstprivate(t_maxresiduum) default(shared)
 			for (j = 1; j < N; j++)
 			{
-				
 				star = (Matrix[m2][i-1][j] + Matrix[m2][i][j-1] + Matrix[m2][i][j+1] + Matrix[m2][i+1][j]) * 0.25;
 		
 				if (options->inf_func == FUNC_FPISIN)
@@ -260,16 +264,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 				}
 		
 				residuum = Matrix[m2][i][j] - star;
-				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */
-				//#pragma omp critical
-				//{
+				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */	
+				
 				t_maxresiduum = (residuum < t_maxresiduum) ? t_maxresiduum : residuum; /* TODO maxresiduum muss zu mutex werden */
-				//}
+				
 				Matrix[m1][i][j] = star;
 			}
 			#pragma omp critical
 			{
-			maxresiduum = (t_maxresiduum < maxresiduum) ? maxresiduum : t_maxresiduum;
+			  maxresiduum = (t_maxresiduum < maxresiduum) ? maxresiduum : t_maxresiduum;
 			}
 		}
 		results->stat_iteration++;
