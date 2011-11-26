@@ -10,7 +10,7 @@ OBJS   = partdiff-seq.o askparams.o displaymatrix.o
 
 # Rule to create *.o from *.c
 .c.o:
-	$(CC) -c $(CFLAGS) $*.c ./omp
+	$(CC) -c $(CFLAGS) $*.c
 
 # Targets ...
 all: partdiff-seq
@@ -24,7 +24,12 @@ partdiff-seq: $(OBJS) Makefile
 clean:
 	$(RM) *.o *~
 
-partdiff-openmp.o : partdiff-seq.c Makefile
+clean-script:
+	$(RM) -r *.out p-omp*
+clean-all:
+	$(RM) -r *.out p-omp* *.o *~ partdiff-seq partdiff-openmp omp/partdiff-seq omp/*.out omp/p-omp* omp/*.o omp/*~
+
+partdiff-openmp.o : partdiff-openmp.c Makefile
 
 partdiff-seq.o: partdiff-seq.c Makefile
 
