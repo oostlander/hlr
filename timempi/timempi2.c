@@ -7,6 +7,7 @@ int main(int argc,char* argv[])
 {
   int numtasks, rank, rc;
   int micros=35;
+  int minsec=42;
 	
 	/* initialize MPI and check for success*/
 	rc = MPI_Init(&argc,&argv);
@@ -67,7 +68,13 @@ int main(int argc,char* argv[])
 		fprintf(stdout, "%s", buf);
 	      }
 	  }
-      	MPI_Barrier(MPI_COMM_WORLD);
+	/* collect the minimum from all processes */
+	MPI_Reduce(&micros, &minsec, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+	if (rank == 0)
+	  {
+	    printf("Minimum of all microsecond counts was:%dns\n",minsec);
+	  }
+	MPI_Barrier(MPI_COMM_WORLD);
 	fprintf(stdout,"Rang %d beendet jetzt!\n",rank);
 	/* finalize the MPI environment */
 	MPI_Finalize();
