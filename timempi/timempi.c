@@ -1,6 +1,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <time.h>
+#include <sys/time.h>
 
 int main(int argc,char* argv[])
 {
@@ -30,15 +31,31 @@ int main(int argc,char* argv[])
 	int resultlength=0;
 	int number;
 	MPI_Get_processor_name(hostname,&resultlength);
+
+	/* get current time */
+	struct tm *Tm;
+	struct timeval detail_time;
 	time_t timer = time(NULL);
+	Tm=localtime(&timer);
+	gettimeofday(&detail_time,NULL);
+	char timestamp[60];
+	snprintf(timestamp,60,"%d %d %d, %d:%d:%d and %dms\n",
+	       //Tm->tm_wday, /* Mon - Sun */
+	       Tm->tm_mday,
+	       Tm->tm_mon+1,
+	       Tm->tm_year+1900,
+	       Tm->tm_hour,
+	       Tm->tm_min,
+	       Tm->tm_sec,
+	       (int) detail_time.tv_usec /1000);
 	if (rank == 0)
 	  {
 	    number=-1;
-	    MPI_Send(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+	    MPI_Send(timestamp, 60, MPI_CHAR, 1, 0, MPI_COMM_WORLD);
 	  } else if (rank == 1)
 	  {
-	    MPI_Recv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	    printf("Process 1 recieved number %d from process o\n",number);
+	    MPI_Recv(timestamp, 60, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	    printf("Process 1 recieved number %s from process o\n",timestamp);
 	  }
 	/****** do some work ******/
 
