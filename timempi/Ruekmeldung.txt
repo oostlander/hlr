@@ -1,0 +1,11 @@
+Bearbeitungszeit: 8-9 Std.
+Schwierigkeit: - etwas hoch
+Lehrreich:     - sehr
+Verständlich:  - verständlich
+Kommentar:     Es hätte sehr geholfen, wenn auf dem Zettel vermerkt worden
+	       wäre, wie man die Zeit genau genug abrufen kann. Viel der
+	       von uns aufgewendeten Zeit wurde darauf verwendet dies genau
+	       genug und Plattformunabhängig abfragen zu können. Die
+	       Plattformunabhängigkeit wurde dabei nicht erreicht. (Auch wenn
+	       diese nicht gefragt war, wozu diesen Vorteil von MPI wieder
+	       zu Nichte machen?)
