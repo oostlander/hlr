@@ -42,7 +42,7 @@ int main(int argc,char* argv[])
 	  {
 	    /* make formatted string from time */
 	    char timestamp[60];
-	    snprintf(timestamp,60,"%s(%d):%d %d %d, %d:%d:%d and %dns\n",
+	    snprintf(timestamp,60,"%s(%d):%d %d %d, %d:%d:%d and %ldms\n",
 		     //Tm->tm_wday, /* Mon - Sun */
 		     hostname,
 		     rank,
@@ -52,7 +52,7 @@ int main(int argc,char* argv[])
 		     Tm->tm_hour,
 		     Tm->tm_min,
 		     Tm->tm_sec,
-		     (int) detail_time.tv_usec); /* /1000 for ms */
+		     (long) detail_time.tv_usec); /* /1000 for ms */
 
 	    /* send timestamp to Master */
 	    MPI_Send(timestamp, 60, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
@@ -60,9 +60,9 @@ int main(int argc,char* argv[])
 	  {
 	    printf("The masternode recieved the following timestamps:\n");
 	    /* print recieved messages */
+	    char buf[60];
 	    for (int i = 1; i < numtasks; i++)
 	      {
-		char buf[60];
 		MPI_Recv(buf, 60, MPI_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		fprintf(stdout, "%s", buf);
 	      }

@@ -76,4 +76,5 @@ int main(int argc,char* argv[])
   fprintf(stdout,"Rang %d beendet jetzt!\n",rank);
   /* finalize the MPI environment */
   MPI_Finalize();
+  return 0;
 }
