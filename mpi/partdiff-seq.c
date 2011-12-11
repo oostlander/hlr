@@ -57,7 +57,6 @@ struct mpi_stats
 struct timeval start_time;       /* time when program started                      */
 struct timeval comp_time;        /* time when calculation completed                */
 
-
 /* ************************************************************************ */
 /* initVariables: Initializes some global variables                         */
 /* ************************************************************************ */
@@ -190,7 +189,7 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 /* ************************************************************************ */
 static
 void
-calculate (struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
+calculate (struct mpi_stats* mpis, struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
 {
 	int i, j;                                   /* local variables for loops  */
 	int m1, m2;                                 /* used as indices for old and new matrices       */
@@ -208,7 +207,10 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	 * maximum number of threads useable */
 	//printf("Anzahl Threads: %d\n", omp_get_max_threads());
 	//printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
-
+	if (0 == mpis->rank)
+	  {
+	    printf("I am the Master\n");
+	  }
 	/* initialize m1 and m2 depending on algorithm */
 	if (options->method == METH_GAUSS_SEIDEL)
 	{
@@ -349,9 +351,9 @@ displayStatistics (struct calculation_arguments* arguments, struct calculation_r
 	printf("Norm des Fehlers:   %e\n", results->stat_precision);
 }
 
-void initMPI(int* argc, char*** argv)
+static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv)
 {
-  int numtasks, rank, rc;
+  int rc;
   
   rc = MPI_Init(argc,argv);
   if (rc != MPI_SUCCESS)
@@ -359,9 +361,9 @@ void initMPI(int* argc, char*** argv)
       printf("Error initializing MPI. Terminating.\n");
       MPI_Abort(MPI_COMM_WORLD, rc);
     }
-  MPI_Comm_size(MPI_COMM_WORLD,&numtasks);
-  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-  if (numtasks < 2)
+  MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
+  MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
+  if (mpis->worldsize < 2)
     {
       printf("Given worldsize does not allow for MPI parallelization. Trying OpenMP...?\n");
     }
@@ -373,29 +375,27 @@ void initMPI(int* argc, char*** argv)
 int
 main (int argc, char** argv)
 {
-	struct options options;
-	struct calculation_arguments arguments;
-	struct calculation_results results; 
-
-	/* get parameters */
-	AskParams(&options, argc, argv);              /* ************************* */
-	
-	initMPI(&argc,&argv);	/* initalize MPI */
-
-	initVariables(&arguments, &results, &options);           /* ******************************************* */
-
-	allocateMatrices(&arguments);        /*  get and initialize variables and matrices  */
-	initMatrices(&arguments, &options);            /* ******************************************* */
-
-	gettimeofday(&start_time, NULL);                   /*  start timer         */
-	calculate(&arguments, &results, &options);                                      /*  solve the equation  */
-	gettimeofday(&comp_time, NULL);                   /*  stop timer          */
-
-	displayStatistics(&arguments, &results, &options);                                  /* **************** */
-	DisplayMatrix("Matrix:",                              /*  display some    */
-			arguments.Matrix[results.m][0], options.interlines);            /*  statistics and  */
-
-	freeMatrices(&arguments);                                       /*  free memory     */
-
-	return 0;
+  struct options options;
+  struct calculation_arguments arguments;
+  struct calculation_results results; 
+  struct mpi_stats mpis;
+  initMPI(&mpis, &argc, &argv);	/* initalize MPI */  
+  AskParams(&options, argc, argv); /* get parameters */   
+  if(0 == mpis.rank)
+    {
+      initVariables(&arguments, &results, &options);           /* ******************************************* */
+      allocateMatrices(&arguments);                            /*  get and initialize variables and matrices  */
+      initMatrices(&arguments, &options);                      /* ******************************************* */
+      
+      gettimeofday(&start_time, NULL);                   /*  start timer         */
+      calculate(&mpis, &arguments, &results, &options);  /*  solve the equation  */
+      gettimeofday(&comp_time, NULL);                    /*  stop timer          */
+      
+      displayStatistics(&arguments, &results, &options);                      /* **************** */
+      DisplayMatrix("Matrix:",                                                /*  display some    */
+		    arguments.Matrix[results.m][0], options.interlines);      /*  statistics and  */
+      freeMatrices(&arguments);                                                   /*  free memory     */
+    }                                                                    /* **************** */
+  MPI_Barrier(MPI_COMM_WORLD);
+return 0;
 }

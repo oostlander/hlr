@@ -74,18 +74,21 @@
 
 #include "partdiff-seq.h"
 #include <string.h>
+#include <mpi.h>
 
 void AskParams( struct options* options, int argc, char** argv )
 {
-	printf ( "\n");
-	printf ( "============================================================\n"  );
-	printf ( "Program for calculation of partial differential equations.  \n" );
-	printf ( "============================================================\n"  );
-	printf ( "(c) Dr. Thomas Ludwig, TU München.\n");
-	printf ( "    Thomas A. Zochler, TU München.\n");
-	printf ( "    Andreas C. Schmidt, TU München.\n");
-	printf ( "============================================================\n"  );
-
+  //printf ( "\n");
+  //printf ( "============================================================\n"  );
+  //printf ( "Program for calculation of partial differential equations.  \n" );
+  //printf ( "============================================================\n"  );
+  //printf ( "(c) Dr. Thomas Ludwig, TU München.\n");
+  //printf ( "    Thomas A. Zochler, TU München.\n");
+  //printf ( "    Andreas C. Schmidt, TU München.\n");
+  //printf ( "============================================================\n"  );
+  //int rank = 42;
+  //MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+  //printf("test%d\n",rank);
 	if( argc < 2 )
 	{
 		/* ----------------------------------------------- */
