@@ -42,7 +42,7 @@
 /** Matrizen zugegriffen werden soll.                                      **/
 /****************************************************************************/
 
-#include "partdiff-seq.h"
+#include "partdiff-par.h"
 #include <stdio.h>
 
 void DisplayMatrix ( char *s, double *v, int interlines )

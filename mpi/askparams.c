@@ -72,7 +72,7 @@
 /**         Abbruchbedingung eingelesen.                                   **/
 /****************************************************************************/
 
-#include "partdiff-seq.h"
+#include "partdiff-par.h"
 #include <string.h>
 #include <mpi.h>
 

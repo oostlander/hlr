@@ -23,7 +23,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <sys/time.h>
-#include "partdiff-seq.h"
+#include "partdiff-par.h"
 //#include "askparams.c"
 //#include "displaymatrix.c"
 //#include <omp.h>

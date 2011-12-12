@@ -6,4 +6,4 @@ cjob*
 *.data
 timempi/timempi
 timempi/timempi2
-mpi/partdiff-seq
+mpi/partdiff-par
