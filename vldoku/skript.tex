@@ -1,0 +1,82 @@
+%Schriftgröße, Layout, Papierformat, Art des Dokumentes
+\documentclass[10pt,oneside,a4paper]{scrartcl}
+
+%Einstellungen der Seitenränder
+\usepackage[left=2.5cm,right=3.5cm,top=1.5cm,bottom=2.5cm,includeheadfoot]{geometry}
+
+%neue Rechtschreibung
+\usepackage[ngerman]{babel}
+
+%Umlaute ermöglichen
+\usepackage[utf8]{inputenc}
+
+%Kopf- und Fußzeile
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+
+%Linie oben
+\renewcommand{\headrulewidth}{0.5pt}
+
+%Linie unten
+\renewcommand{\footrulewidth}{0.5pt}
+\usepackage[pdfborder=0]{hyperref}
+
+\author{Klaas P. Oostlander}
+
+\title{Inoffizielles Skript zur Vorlesung Hochleistungsrechnen}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Einleitung}
+\subsection{Organisatorisches}
+Zur erfolgreichen Teilnahme an der Vorlesung und den begleitenden Übungen empfiehlt es sich, sich in die Mailingliste der Vorlesung einzutragen. Sie ist unter folgender url zu finden: \url{http://wr.informatik.uni-hamburg.de/listinfo/hr-1112}
+
+Zunächst wollen wir uns die allgemeine Definition von Hochleistungsrechnen ansehen. Hierzu findet sich etwa in der Wikipedia:
+\begin{description}
+\item [Hochleistungsrechnen] (englisch: high-performance computing – HPC) ist ein Bereich des computergestützten Rechnens. Er umfasst alle Rechenarbeiten, deren Bearbeitung einer hohen Rechenleistung oder Speicherkapazität bedarf.
+\item [Hochleistungsrechner] sind Rechnersysteme, die geeignet sind, Aufgaben des Hochleistungsrechnens zu bearbeiten.
+\end{description}
+Anwendungsbereiche sind in allen Wissenschaften mit einem hohen Bedarf an Rechen- und Speicherleistung.
+Klassisch sind das:
+\begin{itemize}
+\item Physik (Astronomie, Teilchenphysik, …)
+\item Erdsystemforschung (Klima, Ozeanographie, …)
+\item Bioinformatik (Stammbaumberechnungen, Pharmazie, …)
+\end{itemize}
+Neu dazugekommen sind später:
+\begin{itemize}
+\item Finanzwirtschaft
+\item Sozialwissenschaften (Simulation von Gesellschaften)
+\end{itemize}
+Generell lassen sich dabei die Rechneranlagen ihrer Größe nach unterteilen.
+\begin{description}
+\item[Klein]
+  \begin{itemize}
+  \item Mehrere Prozessoren in einem Rechner oder Prozessorkerne in einem Prozessor
+  \item Einige hundert Euro
+  \end{itemize}
+\item[Groß]
+  \begin{itemize}
+  \item Hunderttausende von Prozessorkernen in einem Großrechner
+  \item Plattenspeicher im Bereich einzelner Petabyte
+  \item Bandarchive im Bereich dutzender Petabyte
+  \item 10…200 Millionen Euro
+  \end{itemize}
+\end{description}
+\section{Hardware- und Software-Konzepte}
+\subsection{Hardware-Architekturen}
+
+\subsection{Die TOP500-Liste}
+Sehen sie sich die aktuelle TOP500-Liste an. Sie finden sie unter der Adresse  bla.
+%TODO URL zur TOP500-Liste einfügen
+\subsection{Vernetzungkonzepte}
+\subsection{Hochleistungs-Eingabe/Ausgabe}
+\subsection{Betriebssystemaspekte}
+\section{Programmierung}
+\section{Programmierwerkzeuge}
+\section{Aktuelle Fragestellungen}
+
+\end{document}

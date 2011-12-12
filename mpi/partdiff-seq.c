@@ -24,6 +24,8 @@
 #include <malloc.h>
 #include <sys/time.h>
 #include "partdiff-seq.h"
+//#include "askparams.c"
+//#include "displaymatrix.c"
 //#include <omp.h>
 #include <mpi.h>
 
