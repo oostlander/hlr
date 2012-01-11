@@ -24,31 +24,30 @@
 #include <malloc.h>
 #include <sys/time.h>
 #include "partdiff-par.h"
-//#include "askparams.c"
-//#include "displaymatrix.c"
 //#include <omp.h>
 #include <mpi.h>
 
 struct calculation_arguments
 {
-	int     N;              /* number of spaces between lines (lines=N+1)     */
-	int     num_matrices;   /* number of matrices                             */
-	double  ***Matrix;      /* index matrix used for addressing M             */
-	double  *M;             /* two matrices with real values                  */
-	double  h;              /* length of a space between two lines            */
+  int     N;              /* number of spaces between lines (lines=N+1)     */
+  int     num_matrices;   /* number of matrices                             */
+  double  ***Matrix;      /* index matrix used for addressing M             */
+  double  *M;             /* two matrices with real values                  */
+  double  h;              /* length of a space between two lines            */
 };
 
 struct calculation_results
 {
-	int     m;
-	int     stat_iteration; /* number of current iteration                    */
-	double  stat_precision; /* actual precision of all slaves in iteration    */
+  int     m;
+  int     stat_iteration; /* number of current iteration                    */
+  double  stat_precision; /* actual precision of all slaves in iteration    */
 };
 
 struct mpi_stats
 {
   int worldsize;			/* Size of Comm_WORLD */
-  int rank;				/* Rank of Node in Comm_WORLD */
+  int rank;                             /* Rank of Node in Comm_WORLD */
+  int jblocksize;			/* Size of Block per node for Jacobi Method */
 };
 
 /* ************************************************************************ */
@@ -58,7 +57,7 @@ struct mpi_stats
 /* time measurement variables */
 struct timeval start_time;       /* time when program started                      */
 struct timeval comp_time;        /* time when calculation completed                */
-
+struct mpi_stats mpis;		 /* mpi values of specific node */
 /* ************************************************************************ */
 /* initVariables: Initializes some global variables                         */
 /* ************************************************************************ */
@@ -66,13 +65,13 @@ static
 void
 initVariables (struct calculation_arguments* arguments, struct calculation_results* results, struct options* options)
 {
-	arguments->N = options->interlines * 8 + 9 - 1;
-	arguments->num_matrices = (options->method == METH_JACOBI) ? 2 : 1;
-	arguments->h = (float)( ( (float)(1) ) / (arguments->N));
-
-	results->m = 0;
-	results->stat_iteration = 0;
-	results->stat_precision = 0;
+  arguments->N = options->interlines * 8 + 9 - 1; /* magic numbers... why "* 8 + 9 - 1" */
+  arguments->num_matrices = (options->method == METH_JACOBI) ? 2 : 1;
+  arguments->h = (float)( ( (float)(1) ) / (arguments->N));
+  
+  results->m = 0;
+  results->stat_iteration = 0;
+  results->stat_precision = 0;
 }
 
 /* ************************************************************************ */
@@ -82,15 +81,15 @@ static
 void
 freeMatrices (struct calculation_arguments* arguments)
 {
-	int i;
-
-	for (i = 0; i < arguments->num_matrices; i++)
-	{
-		free(arguments->Matrix[i]);
-	}
-
-	free(arguments->Matrix);
-	free(arguments->M);
+  int i;
+  
+  for (i = 0; i < arguments->num_matrices; i++)
+    {
+      free(arguments->Matrix[i]);
+    }
+  
+  free(arguments->Matrix);
+  free(arguments->M);
 }
 
 /* ************************************************************************ */
@@ -101,16 +100,16 @@ static
 void*
 allocateMemory (size_t size)
 {
-	void *p;
-
-	if ((p = malloc(size)) == NULL)
-	{
-		printf("\n\nSpeicherprobleme!\n");
-		/* exit program */
-		exit(1);
-	}
-
-	return p;
+  void *p;
+  
+  if ((p = malloc(size)) == NULL)
+    {
+      printf("\n\nSpeicherprobleme!\n");
+      /* exit program */
+      exit(1);
+    }
+  
+  return p;
 }
 
 /* ************************************************************************ */
@@ -120,22 +119,39 @@ static
 void
 allocateMatrices (struct calculation_arguments* arguments)
 {
-	int i, j;
-
-	int N = arguments->N;
-
-	arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double)); 
-	arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-
-	for (i = 0; i < arguments->num_matrices; i++)
+  /* Bei Gauss Seidel muss nicht die gesamte Matrix im Speicher gehalten werden sondern nur der jeweils zum Rechnen benötigte Teil. */
+  /* Es muss nur N durch Anzahl Knoten belegt werden. Ist dabei ein Rest vorhanden wird dieser auf
+die Knoten verteilt (bei 64 Knoten und Rest 63 bekommen 63 Knoten eine Zeile mehr nicht ein Knoten
+63 Zeilen mehr */
+  /* I-Probe Ansatz: Es wird mittels Tag geprüft, ob die gewünschte Genauigkeit schon erreicht wurde.
+   Dann AllReduce */
+  int i, j;
+  
+  int N = arguments->N;
+  
+  //arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double)); 
+  //arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
+  
+  if (((N % mpis.worldsize) >= (mpis.rank+1))&&(1 != mpis.worldsize))
+    {
+      arguments->M = allocateMemory(arguments->num_matrices * ((N / mpis.worldsize) + 2) * (N + 1) * sizeof(double));
+      arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
+      //printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
+    }else if (((N % mpis.worldsize) < (mpis.rank+1))||(1 == mpis.worldsize))
+    {
+      arguments->M = allocateMemory(arguments->num_matrices * ((N / mpis.worldsize) + 1) * (N + 1) * sizeof(double));
+      arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
+      //printf("Prozess%i hat %i Zeilen allokiert und KEINE weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
+    }
+  for (i = 0; i < arguments->num_matrices; i++)
+    {
+      arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
+      
+      for (j = 0; j <= N; j++)
 	{
-		arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
-
-		for (j = 0; j <= N; j++)
-		{
-			arguments->Matrix[i][j] = (double*)(arguments->M + (i * (N + 1) * (N + 1)) + (j * (N + 1)));
-		}
+	  arguments->Matrix[i][j] = (double*)(arguments->M + (i * (N + 1) * (N + 1)) + (j * (N + 1)));
 	}
+    }
 }
 
 /* ************************************************************************ */
@@ -145,44 +161,50 @@ static
 void
 initMatrices (struct calculation_arguments* arguments, struct options* options)
 {
-	int g, i, j;                                /*  local variables for loops   */
-
-	int N = arguments->N;
-	double h = arguments->h;
-	double*** Matrix = arguments->Matrix;
-
-	/* initialize matrix/matrices with zeros */
-	for (g = 0; g < arguments->num_matrices; g++)
+  if (0 == mpis.rank)
+    {
+      int g, i, j;                                /*  local variables for loops   */
+      
+      int N = arguments->N;
+      double h = arguments->h;
+      double*** Matrix = arguments->Matrix;
+      
+      /* initialize matrix/matrices with zeros */
+      for (g = 0; g < arguments->num_matrices; g++)
 	{
-		for (i = 0; i <= N; i++)
+	  for (i = 0; i <= N; i++)
+	    {
+	      for (j = 0; j <= N; j++)
 		{
-			for (j = 0; j <= N; j++)
-			{
-				Matrix[g][i][j] = 0;
-			}
+		  Matrix[g][i][j] = 0;
 		}
+	    }
 	}
-
-	/* initialize borders, depending on function (function 2: nothing to do) */
-	if (options->inf_func == FUNC_F0)
+      
+      /* initialize borders, depending on function (function 2: nothing to do) */
+      if (options->inf_func == FUNC_F0)
 	{
-		for(i = 0; i <= N; i++)
+	  for(i = 0; i <= N; i++)
+	    {
+	      for (j = 0; j < arguments->num_matrices; j++)
 		{
-			for (j = 0; j < arguments->num_matrices; j++)
-			{
-				Matrix[j][i][0] = 1 - (h * i);
-				Matrix[j][i][N] = h * i;
-				Matrix[j][0][i] = 1 - (h * i);
-				Matrix[j][N][i] = h * i;
-			}
+		  Matrix[j][i][0] = 1 - (h * i);
+		  Matrix[j][i][N] = h * i;
+		  Matrix[j][0][i] = 1 - (h * i);
+		  Matrix[j][N][i] = h * i;
 		}
-
-		for (j = 0; j < arguments->num_matrices; j++)
-		{
-			Matrix[j][N][0] = 0;
-			Matrix[j][0][N] = 0;
-		}
+	    }
+	  
+	  for (j = 0; j < arguments->num_matrices; j++)
+	    {
+	      Matrix[j][N][0] = 0;
+	      Matrix[j][0][N] = 0;
+	    }
 	}
+    } else
+    {
+      /* initialize matrix on nodes (size is different) */
+    }
 }
 
 
@@ -193,91 +215,97 @@ static
 void
 calculate (struct mpi_stats* mpis, struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
 {
-	int i, j;                                   /* local variables for loops  */
-	int m1, m2;                                 /* used as indices for old and new matrices       */
-	double star;                                /* four times center value minus 4 neigh.b values */
-	double residuum;                            /* residuum of current iteration                  */
-	double maxresiduum;                         /* maximum residuum value of a slave in iteration */
-	//double t_maxresiduum = 0;					/* temporal value of maxresiduum on OpenMp Thread */
-	int N = arguments->N;
-	double h = arguments->h;
-	double*** Matrix = arguments->Matrix;
-	
-	//	omp_set_num_threads(options->number); /* setting number of openMP Threads */
-	
-	/* Print the number of available processors on the system and the
-	 * maximum number of threads useable */
-	//printf("Anzahl Threads: %d\n", omp_get_max_threads());
-	//printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
-	if (0 == mpis->rank)
-	  {
-	    printf("I am the Master\n");
-	  }
-	/* initialize m1 and m2 depending on algorithm */
-	if (options->method == METH_GAUSS_SEIDEL)
+  int i, j;                                   /* local variables for loops  */
+  int m1, m2;                                 /* used as indices for old and new matrices       */
+  double star;                                /* four times center value minus 4 neigh.b values */
+  double residuum;                            /* residuum of current iteration                  */
+  double maxresiduum;                         /* maximum residuum value of a slave in iteration */
+  double n_maxresiduum = 0;					/* temporal value of maxresiduum on one Node */
+  int N = arguments->N;
+  double h = arguments->h;
+  double*** Matrix = arguments->Matrix;
+  printf("h is:%f\n",arguments->h);
+  printf("N is:%d\n",arguments->N);
+  //	omp_set_num_threads(options->number); /* setting number of openMP Threads */
+  
+  /* Print the number of available processors on the system and the
+   * maximum number of threads useable */
+  //printf("Anzahl Threads: %d\n", omp_get_max_threads());
+  //printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
+   if (0 == mpis->rank)
+    {
+      printf("I am the Master\n");
+    }
+  /* initialize m1 and m2 depending on algorithm */
+  if (options->method == METH_GAUSS_SEIDEL)
+    {
+      m1=0; m2=0;
+    }
+  else			/* Jacobi */
+    {
+      m1=0; m2=1;
+    }
+  
+  while (options->term_iteration > 0)
+    {
+      maxresiduum = 0;
+      /* schemat */
+      /* Matrix muss beim Masterknoten in den Speicher gelegt werden (nur Master) */
+      /* Datenstruktur für die im Speicher vorgehaltenen entsprechend der Knotenaufteilung*/
+      /* senden der nötigen Daten an die Knoten */
+      /* berechnen */
+      /* senden der nötigen Daten an den Nachfolgeknoten */
+      /* start parallel part of the program */
+      /* variables are declared either private, firstprivate, lastprivate or shared */
+      /* default clause sets this for all variables not mentioned !!!!!*/    
+      /* over all rows */
+      for (i = 1; i < N; i++)
 	{
-		m1=0; m2=0;
+	  /* over all columns */
+	  for (j = 1; j < N; j++)
+	    {
+	      star = (Matrix[m2][i-1][j] + Matrix[m2][i][j-1] + Matrix[m2][i][j+1] + Matrix[m2][i+1][j]) * 0.25;
+	      
+	      if (options->inf_func == FUNC_FPISIN)
+		{
+		  star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
+		}
+	      
+	      residuum = Matrix[m2][i][j] - star;
+	      residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */	
+	      /* temporal calculation of maxresiduum per thread */
+	      maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
+	      
+	      Matrix[m1][i][j] = star;
+	    }
+	  /* collect all temporal values of maxresiduum (critical needed to prevent race condition) */
 	}
-	else
+      results->stat_iteration++;
+      results->stat_precision = maxresiduum;
+      
+      /* exchange m1 and m2 */
+      i=m1; m1=m2; m2=i;
+      /* *********************************************************************** */
+      /* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
+      /* Es kann also nur jeweils eine Iteration überhaupt parallelisiert werden */
+      /* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
+      /* *********************************************************************** */
+      
+      /* check for stopping calculation, depending on termination method */
+      if (options->termination == TERM_PREC)
 	{
-		m1=0; m2=1;
+	  if (maxresiduum < options->term_precision) 
+	    {
+	      options->term_iteration = 0;
+	    }
 	}
-
-	while (options->term_iteration > 0)
+      else if (options->termination == TERM_ITER)
 	{
-		maxresiduum = 0;
-	    /* start parallel part of the program */
-	    /* variables are declared either private, firstprivate, lastprivate or shared */
-	    /* default clause sets this for all variables not mentioned !!!!!*/    
-		//shared(maxresiduum, N, m2, m1, options, Matrix)
-		/* over all rows */
-		for (i = 1; i < N; i++)
-		{
-			/* over all columns */
-			for (j = 1; j < N; j++)
-			{
-				star = (Matrix[m2][i-1][j] + Matrix[m2][i][j-1] + Matrix[m2][i][j+1] + Matrix[m2][i+1][j]) * 0.25;
-		
-				if (options->inf_func == FUNC_FPISIN)
-				{
-				  star = (TWO_PI_SQUARE * sin((double)(j) * PI * h) * sin((double)(i) * PI * h) * h * h * 0.25) + star;
-				}
-		
-				residuum = Matrix[m2][i][j] - star;
-				residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */	
-				/* temporal calculation of maxresiduum per thread */
-				maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
-				
-				Matrix[m1][i][j] = star;
-			}
-			/* collect all temporal values of maxresiduum (critical needed to prevent race condition) */
-		}
-		results->stat_iteration++;
-		results->stat_precision = maxresiduum;
-
-		/* exchange m1 and m2 */
-		i=m1; m1=m2; m2=i;
-		/* *********************************************************************** */
-		/* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
-		/* Es kann also nur jeweils eine Iteration überhaupt parallelisiert werden */
-		/* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
-		/* *********************************************************************** */
-
-		/* check for stopping calculation, depending on termination method */
-		if (options->termination == TERM_PREC)
-		{
-			if (maxresiduum < options->term_precision) 
-			{
-				options->term_iteration = 0;
-			}
-		}
-		else if (options->termination == TERM_ITER)
-		{
-			options->term_iteration--;
-		}
+	  options->term_iteration--;
 	}
-
-	results->m = m2;
+    }
+  
+  results->m = m2;
 }
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
@@ -286,71 +314,71 @@ static
 void
 displayStatistics (struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
 {
-	int N = arguments->N;
-
-	double time = (comp_time.tv_sec - start_time.tv_sec) + (comp_time.tv_usec - start_time.tv_usec) * 1e-6;
-	printf("Berechnungszeit:    %f s \n", time);
-
-	//Calculate Flops
-	// star op = 5 ASM ops (+1 XOR) with -O3, matrix korrektur = 1
-	double q = 6;
-	double mflops;
-
-	if (options->inf_func == FUNC_F0)
-	{
-		// residuum: checked 1 flop in ASM, verified on Nehalem architecture.
-		q += 1.0;
-	}
-	else
-	{
-		// residuum: 11 with O0, but 10 with "gcc -O3", without counting sin & cos
-		q += 10.0;
-	}
-
-	/* calculate flops  */
-	mflops = (q * (N - 1) * (N - 1) * results->stat_iteration) * 1e-6;
-	printf("Executed float ops: %f MFlop\n", mflops);
-	printf("Speed:              %f MFlop/s\n", mflops / time);
-
-	printf("Berechnungsmethode: ");
-
-	if (options->method == METH_GAUSS_SEIDEL)
-	{
-		printf("Gauss-Seidel");
-	}
-	else if (options->method == METH_JACOBI)
-	{
-		printf("Jacobi");
-	}
-
-	printf("\n");
-	printf("Interlines:         %d\n",options->interlines);
-	printf("Stoerfunktion:      ");
-
-	if (options->inf_func == FUNC_F0)
-	{
-		printf("f(x,y)=0");
-	}
-	else if (options->inf_func == FUNC_FPISIN)
-	{
-		printf("f(x,y)=2pi^2*sin(pi*x)sin(pi*y)");
-	}
-
-	printf("\n");
-	printf("Terminierung:       ");
-
-	if (options->termination == TERM_PREC)
-	{
-		printf("Hinreichende Genaugkeit");
-	}
-	else if (options->termination == TERM_ITER)
-	{
-		printf("Anzahl der Iterationen");
-	}
-
-	printf("\n");
-	printf("Anzahl Iterationen: %d\n", results->stat_iteration);
-	printf("Norm des Fehlers:   %e\n", results->stat_precision);
+  int N = arguments->N;
+  
+  double time = (comp_time.tv_sec - start_time.tv_sec) + (comp_time.tv_usec - start_time.tv_usec) * 1e-6;
+  printf("Berechnungszeit:    %f s \n", time);
+  
+  //Calculate Flops
+  // star op = 5 ASM ops (+1 XOR) with -O3, matrix korrektur = 1
+  double q = 6;
+  double mflops;
+  
+  if (options->inf_func == FUNC_F0)
+    {
+      // residuum: checked 1 flop in ASM, verified on Nehalem architecture.
+      q += 1.0;
+    }
+  else
+    {
+      // residuum: 11 with O0, but 10 with "gcc -O3", without counting sin & cos
+      q += 10.0;
+    }
+  
+  /* calculate flops  */
+  mflops = (q * (N - 1) * (N - 1) * results->stat_iteration) * 1e-6;
+  printf("Executed float ops: %f MFlop\n", mflops);
+  printf("Speed:              %f MFlop/s\n", mflops / time);
+  
+  printf("Berechnungsmethode: ");
+  
+  if (options->method == METH_GAUSS_SEIDEL)
+    {
+      printf("Gauss-Seidel");
+    }
+  else if (options->method == METH_JACOBI)
+    {
+      printf("Jacobi");
+    }
+  
+  printf("\n");
+  printf("Interlines:         %d\n",options->interlines);
+  printf("Stoerfunktion:      ");
+  
+  if (options->inf_func == FUNC_F0)
+    {
+      printf("f(x,y)=0");
+    }
+  else if (options->inf_func == FUNC_FPISIN)
+    {
+      printf("f(x,y)=2pi^2*sin(pi*x)sin(pi*y)");
+    }
+  
+  printf("\n");
+  printf("Terminierung:       ");
+  
+  if (options->termination == TERM_PREC)
+    {
+      printf("Hinreichende Genaugkeit");
+    }
+  else if (options->termination == TERM_ITER)
+    {
+      printf("Anzahl der Iterationen");
+    }
+  
+  printf("\n");
+  printf("Anzahl Iterationen: %d\n", results->stat_iteration);
+  printf("Norm des Fehlers:   %e\n", results->stat_precision);
 }
 
 static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv)
@@ -365,6 +393,7 @@ static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv)
     }
   MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
   MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
+  
   if (mpis->worldsize < 2)
     {
       printf("Given worldsize does not allow for MPI parallelization. Trying OpenMP...?\n");
@@ -380,24 +409,22 @@ main (int argc, char** argv)
   struct options options;
   struct calculation_arguments arguments;
   struct calculation_results results; 
-  struct mpi_stats mpis;
+  //  struct mpi_stats mpis;
   initMPI(&mpis, &argc, &argv);	/* initalize MPI */  
   AskParams(&options, argc, argv); /* get parameters */   
-  if(0 == mpis.rank)
-    {
       initVariables(&arguments, &results, &options);           /* ******************************************* */
       allocateMatrices(&arguments);                            /*  get and initialize variables and matrices  */
-      initMatrices(&arguments, &options);                      /* ******************************************* */
+      //initMatrices(&arguments, &options);                      /* ******************************************* */
       
       gettimeofday(&start_time, NULL);                   /*  start timer         */
-      calculate(&mpis, &arguments, &results, &options);  /*  solve the equation  */
+      //calculate(&mpis, &arguments, &results, &options);  /*  solve the equation  */
       gettimeofday(&comp_time, NULL);                    /*  stop timer          */
       
       displayStatistics(&arguments, &results, &options);                      /* **************** */
       DisplayMatrix("Matrix:",                                                /*  display some    */
 		    arguments.Matrix[results.m][0], options.interlines);      /*  statistics and  */
       freeMatrices(&arguments);                                                   /*  free memory     */
-    }                                                                    /* **************** */
+                                                                        /* **************** */
   MPI_Barrier(MPI_COMM_WORLD);
-return 0;
+  return 0;
 }
