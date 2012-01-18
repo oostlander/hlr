@@ -48,6 +48,7 @@ struct mpi_stats
   int worldsize;			/* Size of Comm_WORLD */
   int rank;                             /* Rank of Node in Comm_WORLD */
   int jblocksize;			/* Size of Block per node for Jacobi Method */
+  int localN;
 };
 
 /* ************************************************************************ */
@@ -134,12 +135,12 @@ die Knoten verteilt (bei 64 Knoten und Rest 63 bekommen 63 Knoten eine Zeile meh
   
   if (((N % mpis.worldsize) >= (mpis.rank+1))&&(1 != mpis.worldsize))
     {
-      arguments->M = allocateMemory(arguments->num_matrices * ((N / mpis.worldsize) + 2) * (N + 1) * sizeof(double));
+      arguments->M = allocateMemory(arguments->num_matrices * (mpis.localN + 2) * (N + 1) * sizeof(double));
       arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
       //printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
     }else if (((N % mpis.worldsize) < (mpis.rank+1))||(1 == mpis.worldsize))
     {
-      arguments->M = allocateMemory(arguments->num_matrices * ((N / mpis.worldsize) + 1) * (N + 1) * sizeof(double));
+      arguments->M = allocateMemory(arguments->num_matrices * (mpis.localN + 1) * (N + 1) * sizeof(double));
       arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
       //printf("Prozess%i hat %i Zeilen allokiert und KEINE weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
     }
@@ -149,7 +150,7 @@ die Knoten verteilt (bei 64 Knoten und Rest 63 bekommen 63 Knoten eine Zeile meh
       
       for (j = 0; j <= N; j++)
 	{
-	  arguments->Matrix[i][j] = (double*)(arguments->M + (i * (N + 1) * (N + 1)) + (j * (N + 1)));
+	  arguments->Matrix[i][j] = (double*)(arguments->M + (i * (mpis.localN + 1) * (N + 1)) + (j * (N + 1)));
 	}
     }
 }
@@ -161,11 +162,10 @@ static
 void
 initMatrices (struct calculation_arguments* arguments, struct options* options)
 {
-  if (0 == mpis.rank)
-    {
       int g, i, j;                                /*  local variables for loops   */
       
-      int N = arguments->N;
+      //int N = arguments->N;
+      int N = mpis.localN;
       double h = arguments->h;
       double*** Matrix = arguments->Matrix;
       
@@ -201,10 +201,6 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 	      Matrix[j][0][N] = 0;
 	    }
 	}
-    } else
-    {
-      /* initialize matrix on nodes (size is different) */
-    }
 }
 
 
@@ -381,18 +377,19 @@ displayStatistics (struct calculation_arguments* arguments, struct calculation_r
   printf("Norm des Fehlers:   %e\n", results->stat_precision);
 }
 
-static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv)
+static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv, struct calculation_arguments* arguments)
 {
   int rc;
   
   rc = MPI_Init(argc,argv);
-  if (rc != MPI_SUCCESS)
-    {
+  if (rc != MPI_SUCCESS) 
+  {
       printf("Error initializing MPI. Terminating.\n");
       MPI_Abort(MPI_COMM_WORLD, rc);
-    }
+     }
   MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
   MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
+  mpis->localN = (arguments->N / mpis->worldsize);
   
   if (mpis->worldsize < 2)
     {
@@ -409,20 +406,22 @@ main (int argc, char** argv)
   struct options options;
   struct calculation_arguments arguments;
   struct calculation_results results; 
-  //  struct mpi_stats mpis;
-  initMPI(&mpis, &argc, &argv);	/* initalize MPI */  
+  
   AskParams(&options, argc, argv); /* get parameters */   
       initVariables(&arguments, &results, &options);           /* ******************************************* */
+      initMPI(&mpis, &argc, &argv, &arguments);	/* initalize MPI */
       allocateMatrices(&arguments);                            /*  get and initialize variables and matrices  */
-      //initMatrices(&arguments, &options);                      /* ******************************************* */
+      initMatrices(&arguments, &options);                      /* ******************************************* */
       
       gettimeofday(&start_time, NULL);                   /*  start timer         */
       //calculate(&mpis, &arguments, &results, &options);  /*  solve the equation  */
       gettimeofday(&comp_time, NULL);                    /*  stop timer          */
-      
+      if (0 == mpis.rank)
+      {
       displayStatistics(&arguments, &results, &options);                      /* **************** */
       DisplayMatrix("Matrix:",                                                /*  display some    */
 		    arguments.Matrix[results.m][0], options.interlines);      /*  statistics and  */
+		}
       freeMatrices(&arguments);                                                   /*  free memory     */
                                                                         /* **************** */
   MPI_Barrier(MPI_COMM_WORLD);
