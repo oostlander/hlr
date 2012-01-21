@@ -132,18 +132,9 @@ die Knoten verteilt (bei 64 Knoten und Rest 63 bekommen 63 Knoten eine Zeile meh
   
   //arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double)); 
   //arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-  
-  if (((N % mpis.worldsize) >= (mpis.rank+1))&&(1 != mpis.worldsize))
-    {
-      arguments->M = allocateMemory(arguments->num_matrices * (mpis.localN + 2) * (N + 1) * sizeof(double));
-      arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-      //printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
-    }else if (((N % mpis.worldsize) < (mpis.rank+1))||(1 == mpis.worldsize))
-    {
       arguments->M = allocateMemory(arguments->num_matrices * (mpis.localN + 1) * (N + 1) * sizeof(double));
       arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-      //printf("Prozess%i hat %i Zeilen allokiert und KEINE weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
-    }
+      //printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
   for (i = 0; i < arguments->num_matrices; i++)
     {
       arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
@@ -162,9 +153,9 @@ static
 void
 initMatrices (struct calculation_arguments* arguments, struct options* options)
 {
+	// Es reicht nicht local N zu verwenden, denn es muss nach Zeile und Spalte unterschieden werden
+	// sonst wird auch generell eine längere Zeile angnommen (gilt auch für calculate)
       int g, i, j;                                /*  local variables for loops   */
-      
-      //int N = arguments->N;
       int N = mpis.localN;
       double h = arguments->h;
       double*** Matrix = arguments->Matrix;
@@ -209,29 +200,32 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 /* ************************************************************************ */
 static
 void
-calculate (struct mpi_stats* mpis, struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
+calculate (struct calculation_arguments* arguments, struct calculation_results *results, struct options* options)
 {
   int i, j;                                   /* local variables for loops  */
   int m1, m2;                                 /* used as indices for old and new matrices       */
   double star;                                /* four times center value minus 4 neigh.b values */
   double residuum;                            /* residuum of current iteration                  */
   double maxresiduum;                         /* maximum residuum value of a slave in iteration */
-  double n_maxresiduum = 0;					/* temporal value of maxresiduum on one Node */
-  int N = arguments->N;
+  //double n_maxresiduum = 0;					/* temporal value of maxresiduum on one Node */
+  //int N = arguments->N;
+  int N = mpis.localN;
+  //int gN = arguments->N;
   double h = arguments->h;
   double*** Matrix = arguments->Matrix;
-  printf("h is:%f\n",arguments->h);
-  printf("N is:%d\n",arguments->N);
+  MPI_Status status;
+  //printf("h is:%f\n",arguments->h);
+  //printf("N is:%d\n",arguments->N);
   //	omp_set_num_threads(options->number); /* setting number of openMP Threads */
   
   /* Print the number of available processors on the system and the
    * maximum number of threads useable */
   //printf("Anzahl Threads: %d\n", omp_get_max_threads());
   //printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
-   if (0 == mpis->rank)
+   /*if (0 == mpis.rank)
     {
       printf("I am the Master\n");
-    }
+    }*/
   /* initialize m1 and m2 depending on algorithm */
   if (options->method == METH_GAUSS_SEIDEL)
     {
@@ -278,6 +272,19 @@ calculate (struct mpi_stats* mpis, struct calculation_arguments* arguments, stru
 	}
       results->stat_iteration++;
       results->stat_precision = maxresiduum;
+      if(mpis.rank < (mpis.worldsize-1))
+      {
+		  printf("rank is:%i\n",mpis.rank);
+      MPI_Send(&Matrix[m2][N][0],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
+  }
+  if(mpis.rank != 0)
+  {
+      MPI_Recv(&Matrix[m2][N][0],N+1,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD,&status);
+      if (MPI_SUCCESS == status.MPI_TAG)
+      {
+		  printf("recieved something");
+		  }
+  }
       
       /* exchange m1 and m2 */
       i=m1; m1=m2; m2=i;
@@ -389,8 +396,13 @@ static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv, struct calc
      }
   MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
   MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
-  mpis->localN = (arguments->N / mpis->worldsize);
-  
+  if (((arguments->N % mpis->worldsize) >= (mpis->rank+1))&&(1 != mpis->worldsize))
+  {
+  mpis->localN = ((arguments->N / mpis->worldsize)+1);
+  }else if (((arguments->N % mpis->worldsize) < (mpis->rank+1))||(1 == mpis->worldsize))
+  {
+	mpis->localN = (arguments->N / mpis->worldsize);
+	}
   if (mpis->worldsize < 2)
     {
       printf("Given worldsize does not allow for MPI parallelization. Trying OpenMP...?\n");
@@ -414,7 +426,7 @@ main (int argc, char** argv)
       initMatrices(&arguments, &options);                      /* ******************************************* */
       
       gettimeofday(&start_time, NULL);                   /*  start timer         */
-      //calculate(&mpis, &arguments, &results, &options);  /*  solve the equation  */
+      calculate(&arguments, &results, &options);  /*  solve the equation  */
       gettimeofday(&comp_time, NULL);                    /*  stop timer          */
       if (0 == mpis.rank)
       {
