@@ -197,11 +197,11 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 			  if (0 == mpis.rank)
 			  {
 				  Matrix[j][0][i] = 1 - (h * i);
-			  }
+			  }else{Matrix[j][0][i] = 0;}
 			  if (mpis.rank == (mpis.worldsize - 1))
 			  {
 				  Matrix[j][N][i] = h * i;
-			  }
+			  }else{Matrix[j][N][i] = 0;}
 		  }
 	    }
 	  
