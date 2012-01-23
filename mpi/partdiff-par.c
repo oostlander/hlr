@@ -386,14 +386,7 @@ displayStatistics (struct calculation_arguments* arguments, struct calculation_r
 
 static void initMPI(struct mpi_stats* mpis, int* argc, char*** argv, struct calculation_arguments* arguments)
 {
-  int rc;
-  
-  rc = MPI_Init(argc,argv);
-  if (rc != MPI_SUCCESS) 
-  {
-      printf("Error initializing MPI. Terminating.\n");
-      MPI_Abort(MPI_COMM_WORLD, rc);
-     }
+
   MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
   MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
   if (((arguments->N % mpis->worldsize) >= (mpis->rank+1))&&(1 != mpis->worldsize))
@@ -418,7 +411,14 @@ main (int argc, char** argv)
   struct options options;
   struct calculation_arguments arguments;
   struct calculation_results results; 
+    int rc;
   
+  rc = MPI_Init(&argc,&argv);
+  if (rc != MPI_SUCCESS) 
+  {
+      printf("Error initializing MPI. Terminating.\n");
+      MPI_Abort(MPI_COMM_WORLD, rc);
+     }
   AskParams(&options, argc, argv); /* get parameters */   
       initVariables(&arguments, &results, &options);           /* ******************************************* */
       initMPI(&mpis, &argc, &argv, &arguments);	/* initalize MPI */

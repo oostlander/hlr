@@ -89,7 +89,13 @@ void AskParams( struct options* options, int argc, char** argv )
   //int rank = 42;
   //MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   //printf("test%d\n",rank);
-	if( argc < 2 )
+  int mpi_size = 0;
+  int mpi_rank = 0;
+  MPI_Comm_size(MPI_COMM_WORLD,&mpi_size);
+  MPI_Comm_rank(MPI_COMM_WORLD,&mpi_rank);
+  if (0 == mpi_rank)
+  {
+	if( argc < 2 ) // if there is only the programm call and no options
 	{
 		/* ----------------------------------------------- */
 		/* Get input: method, interlines, func, precision. */
@@ -101,7 +107,7 @@ void AskParams( struct options* options, int argc, char** argv )
 			printf("Select number of threads:\n");
 			printf("Number> ");
 			fflush( stdout );
-			ret = scanf("%d", &(options->number));
+			ret = scanf("%d", &(options->number)); //speichert die Varable ab!
 		}
 		while ( (options->number < 0) );
 		do
@@ -201,7 +207,8 @@ void AskParams( struct options* options, int argc, char** argv )
 			printf("Example: %s 1 2 100 1 2 100 \n", argv[0]);
 			exit(0);
 		}
-
+//else read in the settings drectly
+//argv[0] is the programm call
 		sscanf( argv[1],"%d", &(options->number));
 		sscanf( argv[2],"%d", &(options->method));
 		sscanf( argv[3],"%d", &(options->interlines));
@@ -219,4 +226,33 @@ void AskParams( struct options* options, int argc, char** argv )
 			options->term_precision = 0;
 		}
 	}
+}
+	MPI_Datatype Options_type;
+	MPI_Datatype type[7] = {MPI_INT,MPI_INT,MPI_INT,MPI_INT,MPI_INT,MPI_INT,MPI_DOUBLE};
+	int blocklen[7] = {1,1,1,1,1,1,1};
+	MPI_Aint disp[7];
+	MPI_Aint options_address, number_address, method_address, interlines_address, inf_func_address, termination_address, term_iteration_address, term_precision_address;
+	MPI_Get_address(options,&options_address);
+	MPI_Get_address(&(options->number),&number_address);
+	MPI_Get_address(&(options->method),&method_address);
+	MPI_Get_address(&(options->interlines),&interlines_address);
+	MPI_Get_address(&(options->inf_func),&inf_func_address);
+	MPI_Get_address(&(options->termination),&termination_address);
+	MPI_Get_address(&(options->term_iteration),&term_iteration_address);
+	MPI_Get_address(&(options->term_precision),&term_precision_address);
+	disp[0]  = number_address - options_address;
+	disp[1]  = method_address - options_address;
+	disp[2]  = interlines_address - options_address;
+	disp[3]  = inf_func_address - options_address;
+	disp[4]  = termination_address - options_address;
+	disp[5]  = term_iteration_address - options_address;
+	disp[6]  = term_precision_address - options_address;
+	MPI_Type_create_struct(7, blocklen, disp, type,&Options_type);
+	MPI_Type_commit(&Options_type);
+MPI_Bcast(&options, 1,Options_type,0,MPI_COMM_WORLD);
+if (2 == mpi_rank)
+{
+	printf("Testing this!\n");
+	printf("Interlines is:%i\n",options->interlines);
+}
 }
