@@ -250,9 +250,4 @@ void AskParams( struct options* options, int argc, char** argv )
 	MPI_Type_create_struct(7, blocklen, disp, type,&Options_type);
 	MPI_Type_commit(&Options_type);
 MPI_Bcast(options, 1,Options_type,0,MPI_COMM_WORLD);
-if (2 == mpi_rank)
-{
-	printf("Testing this!\n");
-	printf("Interlines is:%i\n",options->interlines);
-}
 }
