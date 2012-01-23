@@ -188,14 +188,20 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
       /* initialize borders, depending on function (function 2: nothing to do) */
       if (options->inf_func == FUNC_F0)
 	{
-	  for(i = 0; i <= N; i++)
+	  for(i = 0; i <= lN; i++)
 	    {
 	      for (j = 0; j < arguments->num_matrices; j++)
 	      {
 			  Matrix[j][i][0] = 1 - (h * i);
 			  Matrix[j][i][N] = h * i;
-			  Matrix[j][0][i] = 1 - (h * i);
-			  Matrix[j][N][i] = h * i;
+			  if (0 == mpis.rank)
+			  {
+				  Matrix[j][0][i] = 1 - (h * i);
+			  }
+			  if (mpis.rank == (mpis.worldsize - 1))
+			  {
+				  Matrix[j][N][i] = h * i;
+			  }
 		  }
 	    }
 	  
