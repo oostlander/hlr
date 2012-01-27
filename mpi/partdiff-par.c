@@ -267,7 +267,7 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 		}
 		if (mpis.rank == (mpis.worldsize-1))
 		{
-			Matrix[j][N][0] = 0;
+			Matrix[j][lN][0] = 0;
 		}
     }
   }
@@ -283,15 +283,18 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 {
   int i, j;                                   /* local variables for loops  */
   int m1, m2;                                 /* used as indices for old and new matrices       */
+  //int flag = 0;
+  //int iter = 1;
   double star;                                /* four times center value minus 4 neigh.b values */
   double residuum;                            /* residuum of current iteration                  */
-  double maxresiduum;                         /* maximum residuum value of a slave in iteration */
+  double maxresiduum, xres;                         /* maximum residuum value of a slave in iteration */
   //double n_maxresiduum = 0;					/* temporal value of maxresiduum on one Node */
   int N = arguments->N;
   int lN = mpis.localN;
   double h = arguments->h;
   double*** Matrix = arguments->Matrix;
-  MPI_Request request1, request2;
+	  //MPI_Request request1, request_s1;
+	  //MPI_Request request2,request_s2;
   //struct MPI_Status status;
   //printf("h is:%f\n",arguments->h);
   //printf("N is:%d\n",arguments->N);
@@ -315,18 +318,18 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
   while (options->term_iteration > 0)
   {
     maxresiduum = 0;
-    /* schemat */
-    /* Matrix muss beim Masterknoten in den Speicher gelegt werden (nur Master) */
-    /* Datenstruktur für die im Speicher vorgehaltenen entsprechend der Knotenaufteilung*/
-    /* senden der nötigen Daten an die Knoten */
-    /* berechnen */
-    /* senden der nötigen Daten an den Nachfolgeknoten */
-    /* start parallel part of the program */
-    /* variables are declared either private, firstprivate, lastprivate or shared */
-    /* default clause sets this for all variables not mentioned !!!!!*/    
     /* over all rows */
     for (i = 1; i < lN; i++) //nur bis zur vorletzten !!
     {
+		/*if ((i >= (lN - 3))&&(iter != 1)&&(mpis.rank != (mpis.worldsize-1)))
+		{
+			if ((0 != mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
+			{ 
+				MPI_Wait(&request_s2,MPI_STATUS_IGNORE);
+				MPI_Wait(&request2,MPI_STATUS_IGNORE);
+			}
+			//MPI_Test(&request_s2,&flag,MPI_STATUS_IGNORE);
+		}*/
       /* over all columns */
       for (j = 1; j < N; j++)
       {
@@ -345,39 +348,47 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	Matrix[m1][i][j] = star;
       }
     }
-    if(0 == mpis.rank)
-    {
-      //printf("snd rk:%i\n",mpis.rank);
-      MPI_Send(Matrix[m1][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration,MPI_COMM_WORLD);
-      MPI_Irecv(Matrix[m1][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
-      //MPI_Send(&Matrix[m2][N][0],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
-    } else
-    if(mpis.rank < (mpis.worldsize-1))
-    {
-      MPI_Send(Matrix[m1][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD);
-      MPI_Irecv(Matrix[m1][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
-      
-      MPI_Irecv(Matrix[m1][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request2);
-      MPI_Send(Matrix[m1][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1,results->stat_iteration,MPI_COMM_WORLD);
-    } else
-    if (mpis.rank == (mpis.worldsize-1))
-    {
-		MPI_Send(Matrix[m1][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD);
-		MPI_Irecv(Matrix[m1][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
-	}
-	if ((0 < mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
-	{
-		MPI_Wait(&request1,MPI_STATUS_IGNORE);
-		MPI_Wait(&request2,MPI_STATUS_IGNORE);
-	}else
-	{
-		MPI_Wait(&request1,MPI_STATUS_IGNORE);
-	}
-	//MPI_Barrier(MPI_COMM_WORLD);
-    results->stat_iteration++;
+    
+        results->stat_iteration++;
+        MPI_Allreduce (&maxresiduum, &xres, 1, MPI_DOUBLE, MPI_MAX,MPI_COMM_WORLD);
+    maxresiduum = xres;
     results->stat_precision = maxresiduum;
     /* exchange m1 and m2 */
     i=m1; m1=m2; m2=i;
+    
+    if(0 == mpis.rank)
+    {
+		//MPI_Isend(Matrix[m2][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration,MPI_COMM_WORLD, &request_s2);
+		//MPI_Irecv(Matrix[m2][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request2);
+		MPI_Send(Matrix[m2][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, 1,MPI_COMM_WORLD);
+		MPI_Recv(Matrix[m2][lN-1],N,MPI_DOUBLE,mpis.rank + 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+    }
+    else if (mpis.rank == (mpis.worldsize-1))
+    {
+		//MPI_Isend(Matrix[m2][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD,&request_s1);
+		//MPI_Irecv(Matrix[m2][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
+		MPI_Send(Matrix[m2][1],N,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD);
+		MPI_Recv(Matrix[m2][0],N,MPI_DOUBLE,mpis.rank - 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+	}
+	else 
+	if((0 != mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
+    {
+		//MPI_Isend(Matrix[m2][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD,&request_s1);
+		//MPI_Irecv(Matrix[m2][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
+		//MPI_Irecv(Matrix[m2][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request2);
+		//MPI_Isend(Matrix[m2][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1,results->stat_iteration,MPI_COMM_WORLD,&request_s2);
+		MPI_Send(Matrix[m2][1],N,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD);
+		MPI_Recv(Matrix[m2][0],N,MPI_DOUBLE,mpis.rank - 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+		MPI_Recv(Matrix[m2][lN-1],N,MPI_DOUBLE,mpis.rank + 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+		MPI_Send(Matrix[m2][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, 1,MPI_COMM_WORLD);
+    }
+    
+	/*if ((0 != mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
+	{
+		MPI_Wait(&request_s1,MPI_STATUS_IGNORE);
+		MPI_Wait(&request1,MPI_STATUS_IGNORE);
+	}*/
+	//MPI_Barrier(MPI_COMM_WORLD);
     /* *********************************************************************** */
     /* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
     /* Es kann also nur jeweils eine Iteration überhaupt parallelisiert werden */
@@ -387,9 +398,10 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     /* check for stopping calculation, depending on termination method */
     if (options->termination == TERM_PREC)
     {
-      if (maxresiduum < options->term_precision) 
+      if (xres < options->term_precision) 
       {
-	options->term_iteration = 0;
+		  options->term_iteration = 0;
+		  
       }
     }
     else if (options->termination == TERM_ITER)
@@ -422,6 +434,8 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     }
   }
   results->m = m2;
+
+
 }
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
@@ -584,5 +598,6 @@ main (int argc, char** argv)
   freeMPI(&mpis);                                                      /*  free memory     */
   /* **************** */
   MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Finalize();
   return 0;
 }
