@@ -52,7 +52,7 @@ struct mpi_stats
   int *counts;
   int *displ;
   int *glines;
-  int bignode;           /* Boolean! Zeigt an ob der Knoten eine Zeile mehr berechnet */
+  int bignode;           /* Boolean! Does the Node calculate an extra line. */
 };
 
 /* ************************************************************************ */
@@ -153,47 +153,38 @@ static
 void
 allocateMatrices (struct calculation_arguments* arguments)
 {
-  /* Es wird auf dem Masterknoten immer die volle Speichermenge belegt.
-   * Auf allen weiteren Knoten wird jeweils nur die Anzahl Zeilen belegt,
-   * die dem jeweiligen Knoten zugewiesen wurde (zuzüglich der Ränder).
-   * 
-   * Bisherige Belegung: Zeilenanzahl / Knotenanzahl
-   * Der Rest wird auf alle Knoten verteilt. */
-   
-  /* I-Probe Ansatz: Es wird mittels Tag geprüft, ob die gewünschte Genauigkeit schon erreicht wurde.
-   *  Dann AllReduce */
   int i, j;
-  //Folge: Matrix[matr] [rows] [collums]
   int N = arguments->N;
-  //On the master-node the complete matrix is allocated!
+  //On the master-node the complete matrix is beeing allocated!
   if (0 == mpis.rank)
   {
     arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double));
     arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
     for (i = 0; i < arguments->num_matrices; i++)
     {
-      arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
+      arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* element wise acess through pointers */
       for (j = 0; j <= N; j++)
       {
 	arguments->Matrix[i][j] = (double*)(arguments->M + (i * (N + 1) * (N + 1)) + (j * (N + 1)));
       }
     }
   }else
+  /* allocate memory on the nodes. */
   {
     arguments->M = allocateMemory(arguments->num_matrices * (mpis.localN + 1) * (N + 1) * sizeof(double));
     arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-    //printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
+    /* Debug
+    printf("Prozess%i hat %i Zeilen allokiert und eine weitere Zeile belegt.\n", mpis.rank, (N / mpis.worldsize));
+    * Debug */
     for (i = 0; i < arguments->num_matrices; i++)
     {
-      arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* Elementzugriff über Zeiger */
+      arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*)); /* element wise acess through pointers */
       for (j = 0; j <= N; j++)
       {
 	arguments->Matrix[i][j] = (double*)(arguments->M + (i * (mpis.localN + 1) * (N + 1)) + (j * (N + 1)));
       }
     }
   }
-  /* Isn't the (N + 1) oviously superflous? the iteration only starts at
-   * i = 1 and stopps at i < N not i <= N */
 }
 
 /* ************************************************************************ */
@@ -203,8 +194,6 @@ static
 void
 initMatrices (struct calculation_arguments* arguments, struct options* options)
 {
-  // Es reicht nicht local N zu verwenden, denn es muss nach Zeile und Spalte unterschieden werden
-  // sonst wird auch generell eine längere Zeile angnommen (gilt auch für calculate)
   int g, i, j;                                /*  local variables for loops   */
   int N = arguments->N;
   int lN = mpis.localN;
@@ -218,7 +207,7 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
     {
       for (j = 0; j <= N; j++)
       {
-	Matrix[g][i][j] = 0;
+		  Matrix[g][i][j] = 0;
       }
     }
   }
@@ -226,7 +215,7 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
   /* initialize borders, depending on function (function 2: nothing to do) */
   if (options->inf_func == FUNC_F0)
   {
-     /* Debug
+     /* Quick Debug
      double test,test1;
      test = ((0 == mpis.rank) ? N : (mpis.displ[mpis.rank]+lN));
      test1 = mpis.displ[mpis.rank];
@@ -241,7 +230,7 @@ initMatrices (struct calculation_arguments* arguments, struct options* options)
 		  Matrix[j][(i-mpis.displ[mpis.rank])][N] = h * i;
 	  }
     }
-    // set the top and bottom line
+    // initialize the top and bottom line
     for(i = 0; i <= N; i++)
     {
 		for (j = 0; j < arguments->num_matrices; j++)
@@ -283,27 +272,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 {
   int i, j;                                   /* local variables for loops  */
   int m1, m2;                                 /* used as indices for old and new matrices       */
-  //int flag = 0;
-  //int iter = 1;
   double star;                                /* four times center value minus 4 neigh.b values */
   double residuum;                            /* residuum of current iteration                  */
-  double maxresiduum, xres;                         /* maximum residuum value of a slave in iteration */
+  double maxresiduum;                         /* maximum residuum value of a slave in iteration */
   //double n_maxresiduum = 0;					/* temporal value of maxresiduum on one Node */
   int N = arguments->N;
   int lN = mpis.localN;
   double h = arguments->h;
   double*** Matrix = arguments->Matrix;
-	  //MPI_Request request1, request2;
-  //struct MPI_Status status;
-  //printf("h is:%f\n",arguments->h);
-  //printf("N is:%d\n",arguments->N);
-  //	omp_set_num_threads(options->number); /* setting number of openMP Threads */
-  
-  /* Print the number of available processors on the system and the
-   * maximum number of threads useable */
-  //printf("Anzahl Threads: %d\n", omp_get_max_threads());
-  //printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
-  
+
   /* initialize m1 and m2 depending on algorithm */
   if (options->method == METH_GAUSS_SEIDEL)
   {
@@ -318,7 +295,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
   {
     maxresiduum = 0;
     /* over all rows */
-    for (i = 1; i < lN; i++) //nur bis zur vorletzten !!
+    for (i = 1; i < lN; i++)
     {
       /* over all columns */
       for (j = 1; j < N; j++)
@@ -331,7 +308,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	}
 	
 	residuum = Matrix[m2][i][j] - star;
-	residuum = (residuum < 0) ? -residuum : residuum; /* Durch abs ersetzen (weil Prozessor befehle) */	
+	residuum = (residuum < 0) ? -residuum : residuum;
 	/* temporal calculation of maxresiduum per thread */
 	maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
 	
@@ -343,13 +320,12 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     results->stat_precision = maxresiduum;
     /* exchange m1 and m2 */
     i=m1; m1=m2; m2=i;
-    
+    // Send the ghostlines to the neigbours
+    //(first and last node are treated differently)
     if(0 == mpis.rank)
     {
-      //printf("snd rk:%i\n",mpis.rank);
       MPI_Send(Matrix[m2][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, 1,MPI_COMM_WORLD);
       MPI_Recv(Matrix[m2][lN-1],N,MPI_DOUBLE,mpis.rank + 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-      //MPI_Send(&Matrix[m2][N][0],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
     } else
     if(mpis.rank < (mpis.worldsize-1))
     {
@@ -364,21 +340,8 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 		MPI_Send(Matrix[m2][1],N,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD);
 		MPI_Recv(Matrix[m2][0],N,MPI_DOUBLE,mpis.rank - 1, 1, MPI_COMM_WORLD,MPI_STATUS_IGNORE);
 	}
-	/*if ((0 < mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
-	{
-		MPI_Wait(&request1,MPI_STATUS_IGNORE);
-		MPI_Wait(&request2,MPI_STATUS_IGNORE);
-	}else
-	{
-		MPI_Wait(&request1,MPI_STATUS_IGNORE);
-	}*/
-    
-	//MPI_Barrier(MPI_COMM_WORLD);
-    /* *********************************************************************** */
-    /* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
-    /* Es kann also nur jeweils eine Iteration überhaupt parallelisiert werden */
-    /* !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! */
-    /* *********************************************************************** */
+    /* Jacobi: One Iteration on many nodes.
+     * Gauss-Seidel: Many iterations handed from node to node. */
     
     /* check for stopping calculation, depending on termination method */
     if (options->termination == TERM_PREC)
@@ -390,22 +353,15 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     }
     else if (options->termination == TERM_ITER)
     {
-      //MPI_Barrier;
       options->term_iteration--;
     }
   }
-  /* calculate the length of the rows to be sent per node and saves them
-   * in counts in the correct order.*/
-  int *counts;
-  counts = mpis.counts;
-  int *displ;
-  displ = mpis.displ;
-  /* Einsammeln der Ergebnisse von den Knoten. Dabei senden die unterschied-
-   * lichen Prozesse auch unterschiedliche viele Zeilen (siehe Berechnung 
-   * von localN). Dementsprechend ist die Anzahl der zu sendenden Daten im
-   * Array counts und die entsprechend berechneten Displacements in displs
-   * hinterlegt.*/
-  //MPI_Gatherv(&Matrix[m2][0][0], lN*(N+1), MPI_DOUBLE, &Matrix[m2][0][0], counts, displ, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  /* Collecting the results frm the nodes. Nodes have different amounts of
+   * lines to send (see calculation of localN).
+   * Number of lines to send is in counts[], displacement in lines from 0
+   * in displ[]. 
+   * MPI_Gatherv is not recommendable since send and recieve-buffer cant be
+   * the same and all processes (including 0) are sending.*/
    if (0 != mpis.rank)
   {
     MPI_Send(Matrix[m2][1], (lN - mpis.ghostlines) * N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
@@ -418,8 +374,6 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     }
   }
   results->m = m2;
-
-
 }
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
@@ -505,13 +459,13 @@ static void initMPI(struct mpi_stats* mpis, struct calculation_arguments* argume
   if (1 == isBignode(mpis->rank,arguments))
   {
     mpis->bignode = 1;
-    //1 extra for big node 2 extra for extra lines needed
+    //1 extra for big node 2 extra for ghostlines
     mpis->localN = ((arguments->N / mpis->worldsize)+1+ghostlines);
   }
   else if (0 == isBignode(mpis->rank,arguments))
   {
     mpis->bignode = 0;
-    //2 extra for calculation
+    //2 extra for ghostlines
     mpis->localN = ((arguments->N / mpis->worldsize)+ghostlines);
   }
   mpis->counts = allocateMemory(mpis->worldsize * sizeof(int));
@@ -527,7 +481,7 @@ static void initMPI(struct mpi_stats* mpis, struct calculation_arguments* argume
     if (1 == isBignode(j,arguments))
     {
       mpis->counts[j] = ((arguments->N / mpis->worldsize)+ 1 + ghostlines);
-      // (number of nodes so far (j) times the lines per node) plus 1 for every node so far (big nodes)
+      //(number of nodes so far (j) times the lines per node) plus 1 for every node so far (big nodes)
       //minus 1 for extra line in calculation
       mpis->displ[j] = ((j * (arguments->N / mpis->worldsize)) + j) - ((0 == j) ? 0 : 1);
     }else if (0 == isBignode(j,arguments))

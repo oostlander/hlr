@@ -1,0 +1,16 @@
+Problematik der Programmbeendigung
+Bei dem Jacobi-Verfahren im einachsten Fall gibt es keine besonderen Schwierig-
+keiten die Abbruchskriterein auch bei einer Ausführung auf mehreren Rechnern
+gleichzeitig sicher zu stellen. Jeder der Knoten zählt mit in welcher Iteration
+sich die Rechung befindet.
+Anspruchsvoller wird es bei dem Abbruch nach Genauigkeit.
+In diesem Fall muss die Information über das Erreichen der notwendigen Genauig-
+keit innerhalb einer auf allen Knoten ausgeführten Iteration verbreitet werden.
+Dies lässt sich etwa durch geschicktes Einsetzen von MPI_Iprobe(), erreichen 
+ohne tatsächlich das Maximum aller errechneter Genauigkeitswerte zu bestimmen.
+Dabei fragen die Knoten einmal pro Iteration mittels MPI_Iprobe() ab, ob
+eine Nachricht mit einem bestimmten Tag an sie verstendet wurde. Ist dies der
+Fall, so wird die aktuelle Iteration abgebrochen und mit MPI_Allreduce die
+Ergebnisse abgeglichen.
+Allgemein ist aber nicht zu vermeiden, dass einmal pro Iteration die Infor-
+mation ausgetauscht wird, ob die gewünschte Genauigkeit bereits erreicht wurde.
