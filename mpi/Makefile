@@ -19,7 +19,7 @@ partdiff-par: $(OBJS) Makefile
 	$(CC) $(LFLAGS) -o $@ $(OBJS) $(LIBS)
 
 clean:
-	$(RM) *.o *~
+	$(RM) -r *.o *~ .ddt* *.error *.output
 clean-script:
 	$(RM) -r *.out p-omp*
 partdiff-par.o: partdiff-par.c Makefile

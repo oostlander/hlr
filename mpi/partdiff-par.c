@@ -47,10 +47,11 @@ struct mpi_stats
 {
   int worldsize;			/* Size of Comm_WORLD */
   int rank;                             /* Rank of Node in Comm_WORLD */
-  int jblocksize;			/* Size of Block per node for Jacobi Method */
+  int ghostlines;			/* Number of ghostlines (overlapping lines) */
   int localN;
   int *counts;
   int *displ;
+  int *glines;
   int bignode;           /* Boolean! Zeigt an ob der Knoten eine Zeile mehr berechnet */
 };
 
@@ -106,6 +107,7 @@ freeMPI (struct mpi_stats* mpis)
 {
   free(mpis->counts);
   free(mpis->displ);
+  free(mpis->glines);
 }
 
 /* ********************************************************************************* */
@@ -298,10 +300,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
    * maximum number of threads useable */
   //printf("Anzahl Threads: %d\n", omp_get_max_threads());
   //printf("Anzahl Prozessoren: %d\n", omp_get_num_procs());
-  /*if (0 == mpis.rank)
-   *   {
-   *     printf("I am the Master\n");
-}*/
+  
   /* initialize m1 and m2 depending on algorithm */
   if (options->method == METH_GAUSS_SEIDEL)
   {
@@ -344,11 +343,10 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	
 	Matrix[m1][i][j] = star;
       }
-      /* collect all temporal values of maxresiduum (critical needed to prevent race condition) */
     }
     results->stat_iteration++;
     results->stat_precision = maxresiduum;
-    if(mpis.rank < (mpis.worldsize-1))
+    /*if(mpis.rank < (mpis.worldsize-1))
     {
       //printf("snd rk:%i\n",mpis.rank);
       MPI_Send(Matrix[m2][lN],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
@@ -358,7 +356,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
     {
       MPI_Recv(Matrix[m2][0],N+1,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
       //printf("rcv rk:%i\n",mpis.rank);
-    }
+    }*/
     
     /* exchange m1 and m2 */
     i=m1; m1=m2; m2=i;
@@ -394,14 +392,19 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
    * Array counts und die entsprechend berechneten Displacements in displs
    * hinterlegt.*/
   //MPI_Gatherv(&Matrix[m2][0][0], lN*(N+1), MPI_DOUBLE, &Matrix[m2][0][0], counts, displ, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-  if (0 != mpis.rank)
+   /*if ((mpis.worldsize - 1) = mpis.rank)
+   {
+	   MPI_Send(Matrix[m2][1], (lN - mpis.ghostlines) * N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+   }else*/
+   if (0 != mpis.rank)
   {
-    MPI_Send(Matrix[m2][1], lN*(N+1), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+    MPI_Send(Matrix[m2][1], (lN - mpis.ghostlines) * N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
   }else
   {
     for (i = 1; i < mpis.worldsize; i++)
     {
-      MPI_Recv(Matrix[m2][mpis.displ[i]],mpis.counts[i]*(N+1),MPI_DOUBLE, i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+      MPI_Recv(Matrix[m2][(mpis.displ[i] + 1)],(mpis.counts[i] - mpis.glines[i]) * N,
+			MPI_DOUBLE, i,0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
     }
   }
   results->m = m2;
@@ -485,36 +488,44 @@ static void initMPI(struct mpi_stats* mpis, struct calculation_arguments* argume
   int j = 0;
   MPI_Comm_size(MPI_COMM_WORLD,&mpis->worldsize);
   MPI_Comm_rank(MPI_COMM_WORLD,&mpis->rank);
+  int ghostlines = ((0 == mpis->rank)||(mpis->rank == (mpis->worldsize -1)) ? 1 : 2);
+  mpis->ghostlines = ghostlines;
   if (1 == isBignode(mpis->rank,arguments))
   {
     mpis->bignode = 1;
-    mpis->localN = ((arguments->N / mpis->worldsize)+1);
+    //1 extra for big node 2 extra for extra lines needed
+    mpis->localN = ((arguments->N / mpis->worldsize)+1+ghostlines);
   }
   else if (0 == isBignode(mpis->rank,arguments))
   {
     mpis->bignode = 0;
-    mpis->localN = (arguments->N / mpis->worldsize);
+    //2 extra for calculation
+    mpis->localN = ((arguments->N / mpis->worldsize)+ghostlines);
   }
   mpis->counts = allocateMemory(mpis->worldsize * sizeof(int));
   mpis->displ = allocateMemory(mpis->worldsize * sizeof(int));
+  mpis->glines = allocateMemory(mpis->worldsize * sizeof(int));
   int lines_per_node = arguments->N / mpis->worldsize;
   int number_big_nodes = arguments->N % mpis->worldsize;
   
   for (j = 0; j < mpis->worldsize; j++)
   {
+	  ghostlines = ((0 == j)||(j == (mpis->worldsize -1)) ? 1 : 2);
+	  mpis->glines[j] = ghostlines;
     if (1 == isBignode(j,arguments))
     {
-      mpis->counts[j] = ((arguments->N / mpis->worldsize)+1);
+      mpis->counts[j] = ((arguments->N / mpis->worldsize)+ 1 + ghostlines);
       // (number of nodes so far (j) times the lines per node) plus 1 for every node so far (big nodes)
-      mpis->displ[j] = (j * (arguments->N / mpis->worldsize)) + j;
+      //minus 1 for extra line in calculation
+      mpis->displ[j] = ((j * (arguments->N / mpis->worldsize)) + j) - ((0 == j) ? 0 : 1);
     }else if (0 == isBignode(j,arguments))
     {
-      mpis->counts[j] = (arguments->N / mpis->worldsize);
-      // all bigger nodes + all small nodes so far
+      mpis->counts[j] = (arguments->N / mpis->worldsize) + ghostlines;
+      // all bigger nodes + all small nodes so far - 1 (see above)
       // all bigger nodes = (arguments->N % mpis.worldsize)*(arguments->N + 1)
       // all small nodes so far = ((j + 1) - (arguments->N % mpis.worldsize))*(arguments->N + 1)
-      mpis->displ[j] = (((number_big_nodes * lines_per_node) + number_big_nodes)
-      + ((j - number_big_nodes) * lines_per_node));
+      mpis->displ[j] = ((((number_big_nodes * lines_per_node) + number_big_nodes)
+      + ((j - number_big_nodes) * lines_per_node)) - ((0 == j) ? 0 : 1));
     }
   }
   if (mpis->worldsize < 2)
@@ -547,7 +558,7 @@ main (int argc, char** argv)
   initMatrices(&arguments, &options);                      /* ******************************************* */
   
   gettimeofday(&start_time, NULL);                   /*  start timer         */
-  //calculate(&arguments, &results, &options);         /*  solve the equation  */
+  calculate(&arguments, &results, &options);         /*  solve the equation  */
   gettimeofday(&comp_time, NULL);                    /*  stop timer          */
   if (0 == mpis.rank)
   {
