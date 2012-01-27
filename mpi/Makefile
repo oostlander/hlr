@@ -21,7 +21,7 @@ partdiff-par: $(OBJS) Makefile
 clean:
 	$(RM) -r *.o *~ .ddt* *.error *.output
 clean-script:
-	$(RM) -r *.out p-omp*
+	$(RM) -r *.out pmpi*
 partdiff-par.o: partdiff-par.c Makefile
 
 askparams.o: askparams.c Makefile

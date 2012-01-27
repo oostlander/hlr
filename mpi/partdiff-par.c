@@ -291,6 +291,7 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
   int lN = mpis.localN;
   double h = arguments->h;
   double*** Matrix = arguments->Matrix;
+  MPI_Request request1, request2;
   //struct MPI_Status status;
   //printf("h is:%f\n",arguments->h);
   //printf("N is:%d\n",arguments->N);
@@ -344,20 +345,37 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
 	Matrix[m1][i][j] = star;
       }
     }
-    results->stat_iteration++;
-    results->stat_precision = maxresiduum;
-    /*if(mpis.rank < (mpis.worldsize-1))
+    if(0 == mpis.rank)
     {
       //printf("snd rk:%i\n",mpis.rank);
-      MPI_Send(Matrix[m2][lN],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
+      MPI_Send(Matrix[m1][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration,MPI_COMM_WORLD);
+      MPI_Irecv(Matrix[m1][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
       //MPI_Send(&Matrix[m2][N][0],N+1,MPI_DOUBLE,mpis.rank + 1,1,MPI_COMM_WORLD);
-    }
-    if(mpis.rank != 0)
+    } else
+    if(mpis.rank < (mpis.worldsize-1))
     {
-      MPI_Recv(Matrix[m2][0],N+1,MPI_DOUBLE,mpis.rank - 1,1,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-      //printf("rcv rk:%i\n",mpis.rank);
-    }*/
-    
+      MPI_Send(Matrix[m1][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD);
+      MPI_Irecv(Matrix[m1][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
+      
+      MPI_Irecv(Matrix[m1][lN-1],N,MPI_DOUBLE,mpis.rank + 1, results->stat_iteration, MPI_COMM_WORLD,&request2);
+      MPI_Send(Matrix[m1][lN-1-1],N,MPI_DOUBLE,mpis.rank + 1,results->stat_iteration,MPI_COMM_WORLD);
+    } else
+    if (mpis.rank == (mpis.worldsize-1))
+    {
+		MPI_Send(Matrix[m1][1],N,MPI_DOUBLE,mpis.rank - 1,results->stat_iteration,MPI_COMM_WORLD);
+		MPI_Irecv(Matrix[m1][0],N,MPI_DOUBLE,mpis.rank - 1, results->stat_iteration, MPI_COMM_WORLD,&request1);
+	}
+	if ((0 < mpis.rank)&&(mpis.rank < (mpis.worldsize-1)))
+	{
+		MPI_Wait(&request1,MPI_STATUS_IGNORE);
+		MPI_Wait(&request2,MPI_STATUS_IGNORE);
+	}else
+	{
+		MPI_Wait(&request1,MPI_STATUS_IGNORE);
+	}
+	//MPI_Barrier(MPI_COMM_WORLD);
+    results->stat_iteration++;
+    results->stat_precision = maxresiduum;
     /* exchange m1 and m2 */
     i=m1; m1=m2; m2=i;
     /* *********************************************************************** */
@@ -392,10 +410,6 @@ calculate (struct calculation_arguments* arguments, struct calculation_results *
    * Array counts und die entsprechend berechneten Displacements in displs
    * hinterlegt.*/
   //MPI_Gatherv(&Matrix[m2][0][0], lN*(N+1), MPI_DOUBLE, &Matrix[m2][0][0], counts, displ, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-   /*if ((mpis.worldsize - 1) = mpis.rank)
-   {
-	   MPI_Send(Matrix[m2][1], (lN - mpis.ghostlines) * N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-   }else*/
    if (0 != mpis.rank)
   {
     MPI_Send(Matrix[m2][1], (lN - mpis.ghostlines) * N, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
@@ -528,7 +542,7 @@ static void initMPI(struct mpi_stats* mpis, struct calculation_arguments* argume
       + ((j - number_big_nodes) * lines_per_node)) - ((0 == j) ? 0 : 1));
     }
   }
-  if (mpis->worldsize < 2)
+  if (mpis->worldsize == 1)
   {
     printf("Given worldsize does not allow for MPI parallelization. Trying OpenMP...?\n");
   }
